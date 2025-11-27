@@ -1,0 +1,130 @@
+// ============================================================
+// 🤖 ESP32 + ULTRASONIC SENSOR + RELAY + TELEGRAM ALERT
+// Logic: When human detected within 50cm, relay ON and message sent
+// When no human, relay OFF and message sent
+// ============================================================
+
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <UniversalTelegramBot.h>
+#include <ArduinoJson.h>
+
+// --- Replace with your WiFi credentials ---
+const char* ssid = "YOUR_WIFI_NAME";
+const char* password = "YOUR_WIFI_PASSWORD";
+
+// --- Telegram Bot details ---
+#define BOT_TOKEN "YOUR_TELEGRAM_BOT_TOKEN"
+#define CHAT_ID "YOUR_CHAT_ID"
+
+// --- Pin configuration ---
+#define TRIG_PIN 5
+#define ECHO_PIN 18
+#define RELAY_PIN 23
+#define ACS_PIN 34
+
+// --- Parameters ---
+#define DISTANCE_LIMIT 50     // in cm
+#define ACS_SENSITIVITY 0.100 // 100mV per A
+#define REF_VOLTAGE 3.3
+#define ADC_RESOLUTION 4095.0
+#define VOLTAGE_DIVIDER_RATIO 5.0
+
+// --- Global variables ---
+float zeroCurrent = 0;
+WiFiClientSecure client;
+UniversalTelegramBot bot(BOT_TOKEN, client);
+bool relayState = false;
+unsigned long lastMsgTime = 0;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+  pinMode(RELAY_PIN, OUTPUT);
+  pinMode(ACS_PIN, INPUT);
+  digitalWrite(RELAY_PIN, LOW);
+
+  Serial.println("⚡ Connecting to WiFi...");
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\n✅ WiFi Connected!");
+  Serial.print("📶 IP Address: ");
+  Serial.println(WiFi.localIP());
+
+  client.setInsecure(); // disable SSL verification for Telegram
+
+  Serial.println("🔧 Calibrating ACS sensor...");
+  zeroCurrent = calibrateACS();
+  Serial.print("✅ Baseline: ");
+  Serial.println(zeroCurrent);
+
+  bot.sendMessage(CHAT_ID, "🚀 ESP32 System Started and Online!", "");
+  Serial.println("──────────────────────────────");
+}
+
+float calibrateACS() {
+  long sum = 0;
+  for (int i = 0; i < 200; i++) {
+    sum += analogRead(ACS_PIN);
+    delay(5);
+  }
+  return (float)sum / 200.0;
+}
+
+float getDistance() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+  long duration = pulseIn(ECHO_PIN, HIGH, 30000);
+  return duration * 0.034 / 2; // convert to cm
+}
+
+float getCurrent() {
+  int raw = analogRead(ACS_PIN);
+  float sensorVoltage = (raw / ADC_RESOLUTION) * REF_VOLTAGE;
+  float offsetVoltage = (zeroCurrent / ADC_RESOLUTION) * REF_VOLTAGE;
+  float current = (sensorVoltage - offsetVoltage) / ACS_SENSITIVITY;
+  if (current < 0) current = -current;
+  return current;
+}
+
+void loop() {
+  float distance = getDistance();
+  float current = getCurrent();
+
+  Serial.print("📏 Distance: ");
+  Serial.print(distance);
+  Serial.println(" cm");
+
+  Serial.print("⚡ Current: ");
+  Serial.print(current, 2);
+  Serial.println(" A");
+
+  // Human detected
+  if (distance > 0 && distance < DISTANCE_LIMIT) {
+    if (!relayState) {
+      digitalWrite(RELAY_PIN, HIGH);
+      relayState = true;
+      Serial.println("🚶‍♂️ Human Detected → Relay ON 💡");
+      bot.sendMessage(CHAT_ID, "🚶‍♂️ Human detected! Relay turned ON 💡", "");
+    }
+  } 
+  // No human
+  else {
+    if (relayState) {
+      digitalWrite(RELAY_PIN, LOW);
+      relayState = false;
+      Serial.println("😴 No Human → Relay OFF 📴");
+      bot.sendMessage(CHAT_ID, "😴 No human detected. Relay turned OFF 📴", "");
+    }
+  }
+
+  Serial.println("──────────────────────────────");
+  delay(1000);
+}
