@@ -1,0 +1,14 @@
+ABSTRACT
+
+This project presents an lot-based system designed to minimize electricity wastage in homes and industries. The system uses ESP32, Ultrasonic sensors, and current sensors to detect when electrical appliances are consuming power in the absence of human presence. When wastage is detected, the system sends real-time notifications to the user's mobile phone via Wi-Fi The solution is low-cost, scalable, and energy-efficient, making it practical for households, offices, and industrial settings.
+OBJECTIVES
+
+To detect human presence in a room using Ultrasonic sensors.
+
+To monitor power consumption through current sensors.
+
+To compare occupancy with load status and detect wastage.
+
+To notify users via Wi-Fi using ESP32.
+
+To provide a scalable system extendable to multiple rooms.
